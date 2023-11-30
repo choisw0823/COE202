@@ -1,6 +1,8 @@
 import numpy as np
 import scipy.stats
 import yut.engine
+import itertools
+from functools import lru_cache
 
 distance_to_goal = np.zeros( yut.rule.FINISHED+1 )
 outcomes, probs = yut.rule.enumerate_all_cast_outcomes(depth=5)
@@ -17,13 +19,17 @@ for _ in range(10):
 		distance_to_goal[s] = weighted_sum
 
 def evaluate_score( my_positions, enemy_positions, throw_again ):
+	return -predict(enemy_positions, my_positions, throw_again) + (1 if throw_again else 0)
+
+@lru_cache
+def calc_total_score(my_positions, enemy_positions, throw_again):
 	my_duplicates = [ sum(np == p for np in my_positions) for p in my_positions ]
 	enemy_duplicates = [ sum(np == p for np in enemy_positions) for p in enemy_positions ]
 	multipliers = [ 1, 1, 0.7, 0.4, 0.3 ]
 
 	return - sum( distance_to_goal[p] * (multipliers[np] if p != 0 else 1) for p,np in zip(my_positions,my_duplicates) ) \
 			+ sum( distance_to_goal[p] * (multipliers[np] if p != 0 else 1) for p,np in zip(enemy_positions,enemy_duplicates) ) \
-			+ ( +1 if throw_again else 0 ) + calc_safe_score(my_positions, enemy_positions)*34 - calc_safe_score(enemy_positions, my_positions)*19.3
+			+(1 if throw_again else 0) + calc_safe_score(my_positions, enemy_positions)*6 - calc_safe_score(enemy_positions, my_positions)*3
 
 def calc_safe_score(my_positions, enemy_positions):
 	prob = yut.rule._prob_yutscores
@@ -69,6 +75,38 @@ def kill_able(my_positions, enemy_positions, available_yutscores, rec_count=3):
 							return [mal, yut_score, shortcut]
 						
 	return [-1,-1,-1]#false
+prob = yut.rule._prob_yutscores
+
+available_yut = []
+for i,yut_score in enumerate([1,2,3,4,5,-1]):
+	if yut_score == 4 or yut_score == 5:
+		for j,yut_score2 in enumerate([1,2,3,4,5,-1]):
+			if prob[i]*prob[j]>0.02:
+				available_yut.append([[yut_score, yut_score2], prob[i]*prob[j]])
+	else:
+		available_yut.append([[yut_score], prob[i]])
+
+@lru_cache
+def predict(my_positions, enemy_positions, throw_again, rec_count=2):
+	if rec_count == 0:
+		return calc_total_score(my_positions, enemy_positions, throw_again)
+	ans = 0
+	for yut_info in available_yut:
+		result = -999999
+		for mals in itertools.product(list(range(4)), repeat=len(yut_info[0])):
+			next_my_positions, next_enemy_positions = my_positions[:], enemy_positions[:]
+			illegal = False
+			for i,mal in enumerate(mals):
+				legal_move, next_my_positions, next_enemy_positions, num_mals_caught = yut.rule.make_move( next_my_positions, next_enemy_positions, mal, yut_info[0][i], True )
+				if not legal_move: 
+					illegal = True
+					break
+			if illegal: continue
+			pre_result = -predict(tuple(sorted(list(next_enemy_positions))), tuple(sorted(list(next_my_positions))), num_mals_caught>0, rec_count-1)
+			result = max(pre_result, result)
+		ans += result*yut_info[1]
+		
+	return ans+(1 if throw_again else 0)
 
 class MyPlayer(yut.engine.Player):
 	def name(self):
@@ -81,11 +119,9 @@ class MyPlayer(yut.engine.Player):
 		# if safe_score>safe_limit:
 		# 	#생존율을 높이는 방향으로 움직임
 		# 	return safe_recommend(my_positions, enemy_positions, available_yutscores)
-		
 		if kill_move[0] != -1:
 			#죽일 수 있는 말을 잡음
 			return kill_move + [""]
-		
 		for mi, mp in enumerate(my_positions):
 			if mp == yut.rule.FINISHED:
 				continue
@@ -96,7 +132,7 @@ class MyPlayer(yut.engine.Player):
 						scores.append( (evaluate_score(next_my_positions, next_enemy_positions, num_mals_caught>0), mi, ys, shortcut ) )
 		scores.sort(reverse=True)
 		return scores[0][1], scores[0][2], scores[0][3], ""
-
+	
 if __name__ == "__main__":
 	import example_player
 	p = example_player.ExamplePlayer()
@@ -104,16 +140,23 @@ if __name__ == "__main__":
 	engine = yut.engine.GameEngine()
 	ans = 0
 	win_count = 0
-	for s in range(1000):
-		winner = engine.play( p2, p, seed=s )
+	for s in range(100):
+		winner = engine.play( p2, p)
 		if winner == 0:
+			print('선공 승!')
 			win_count += 1
+		else:
+			print('패배!')
 	ans = win_count
+	print(ans)
 	win_count = 0
-	for s in range(1000):
-		winner = engine.play( p, p2, seed=s )
+	for s in range(100):
+		winner = engine.play( p, p2 )
 		if winner == 1:
+			print('후공 승!')
 			win_count += 1
+		else:
+			print('패배!')
 	print(ans, win_count)
 	
 
