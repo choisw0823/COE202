@@ -2,10 +2,11 @@ import numpy as np
 import scipy.stats
 import yut.engine
 import itertools
-from functools import lru_cache
+from functools import cache
 import yut.rule
 import interactive_player
 import example_player
+import time 
 
 distance_to_goal = np.zeros(yut.rule.FINISHED + 1)
 outcomes, probs = yut.rule.enumerate_all_cast_outcomes(depth=5)
@@ -37,7 +38,7 @@ def shortcut_score(my_positions):
             score += 1
     return score
 
-@lru_cache
+@cache
 def calc_total_score(my_positions, enemy_positions):
     my_duplicates = [sum(np == p for np in my_positions) for p in my_positions]
     enemy_duplicates = [sum(np == p for np in enemy_positions) for p in enemy_positions]
@@ -56,9 +57,9 @@ def calc_safe_score(my_positions, enemy_positions):
             if legal_move:
                 if len(yut_list) > 1:
                     for mal in range(4):
-                        legal_move, next_my_positions, next_enemy_positions, num_mals_caught = yut.rule.make_move(next_my_positions, next_enemy_positions, mal, yut_list[1], True)
+                        legal_move, nnext_my_positions, nnext_enemy_positions, num_mals_caught = yut.rule.make_move(next_my_positions, next_enemy_positions, mal, yut_list[1], True)
                         if legal_move:
-                            safe += num_mals_caught * prob
+                            safe += num_mals_caught * prob * sum([(30-distance_to_goal[a])*0.1 if b==0 and a != 0 else 0 for a,b in zip(next_enemy_positions, nnext_enemy_positions)])
                 else:
                     safe += num_mals_caught * prob
     return safe
@@ -111,7 +112,7 @@ for i, yut_score in enumerate([1, 2, 3, 4, 5, -1]):
     else:
         available_yut.append([[yut_score], prob[i]])
 
-@lru_cache
+@cache
 def predict(my_positions, enemy_positions, rec_count=2, plus=None, first=False):
     my_positions = tuple(my_positions)
     enemy_positions = tuple(enemy_positions)
@@ -164,19 +165,19 @@ class MyPlayer(yut.engine.Player):
                 continue
             for i, ys in enumerate(available_yutscores):
                 for shortcut in [True, False]:
+                    legal_move, next_my_positions, next_enemy_positions, num_mals_caught = yut.rule.make_move(my_positions, enemy_positions, mi, ys, shortcut)
                     if shortcut == False and prev_next_m == next_my_positions and prev_next_e == next_enemy_positions:
                         break
                     else:
-                        prev_next_m, prev_next_e = next_my_positions, next_enemy_positions
-                    legal_move, next_my_positions, next_enemy_positions, num_mals_caught = yut.rule.make_move(my_positions, enemy_positions, mi, ys, shortcut)
+                        prev_next_m, prev_next_e = next_my_positions, next_enemy_positions                    
                     if legal_move:
                         if len(available_yutscores) == 1:
+                            scores.append((evaluate_score(next_my_positions, next_enemy_positions, more=[]), mi, ys, shortcut))
+                            #print(next_my_positions, next_enemy_positions, new_avail, scores[-1])
+                        else:
                             new_avail = available_yutscores[:]
                             new_avail.remove(ys)
                             scores.append((evaluate_score(next_my_positions, next_enemy_positions, more=new_avail), mi, ys, shortcut))
-                            print(next_my_positions, next_enemy_positions, new_avail, scores[-1])
-                        else:
-                            scores.append((evaluate_score(next_my_positions, next_enemy_positions, more=available_yutscores[(i+1):]), mi, ys, shortcut))
 
         scores.sort(reverse=True)
         return scores[0][1], scores[0][2], scores[0][3], ""
@@ -189,11 +190,11 @@ if __name__ == "__main__":
     engine = yut.engine.GameEngine()
     ans = 0
     win_count = 0
-
+    t = time.time()
     for s in range(100):
         event_logger = yut.engine.EventLogger()
         winner = engine.play(p2, p, game_event_listener=event_logger)
-        event_logger.save( f"game_cc_1_{s}.log" )
+        event_logger.save( f"{t}_game_1_{s}.log" )
         if winner == 0:
             win_count += 1
         print(win_count, s+1 - win_count)
@@ -205,7 +206,7 @@ if __name__ == "__main__":
     for s in range(100):
         event_logger = yut.engine.EventLogger()
         winner = engine.play(p, p2, game_event_listener=event_logger)
-        event_logger.save( f"game_cc_2_{s}.log" )
+        event_logger.save( f"{t}_game_2_{s}.log" )
         if winner == 1:
             win_count += 1
         print(win_count, s+1 - win_count)
