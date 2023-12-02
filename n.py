@@ -164,10 +164,17 @@ class MyPlayer(yut.engine.Player):
                 continue
             for i, ys in enumerate(available_yutscores):
                 for shortcut in [True, False]:
+                    if shortcut == False and prev_next_m == next_my_positions and prev_next_e == next_enemy_positions:
+                        break
+                    else:
+                        prev_next_m, prev_next_e = next_my_positions, next_enemy_positions
                     legal_move, next_my_positions, next_enemy_positions, num_mals_caught = yut.rule.make_move(my_positions, enemy_positions, mi, ys, shortcut)
                     if legal_move:
                         if len(available_yutscores) == 1:
-                            scores.append((evaluate_score(next_my_positions, next_enemy_positions), mi, ys, shortcut))
+                            new_avail = available_yutscores[:]
+                            new_avail.remove(ys)
+                            scores.append((evaluate_score(next_my_positions, next_enemy_positions, more=new_avail), mi, ys, shortcut))
+                            print(next_my_positions, next_enemy_positions, new_avail, scores[-1])
                         else:
                             scores.append((evaluate_score(next_my_positions, next_enemy_positions, more=available_yutscores[(i+1):]), mi, ys, shortcut))
 
