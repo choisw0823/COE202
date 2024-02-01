@@ -1,3 +1,3 @@
 # COE202
 
-asdfasdf
+AI for YutNori(윷놀이)
